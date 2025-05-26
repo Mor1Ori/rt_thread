@@ -225,12 +225,6 @@ int main(void)
   M_PSP_WRITE_REGISTER_32(SegEn_ADDR, 0x00110000);
   M_PSP_WRITE_REGISTER_32(SegDig_ADDR, 0x02111314);
 
-  while (1){
- if( READ_GPIO(GPIO_SWs) >> 31 ==0x0001) sm3_sample();
- else if( READ_GPIO(GPIO_SWs) >> 30 ==0x0001) klman_sample();
- else if( READ_GPIO(GPIO_SWs) >> 29 ==0x0001) image_sample();
-  }
-
   /*创建线程示例*/
   Start = rt_thread_create("start",
                             startApp, RT_NULL,
