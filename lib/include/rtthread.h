@@ -296,6 +296,13 @@ rt_err_t rt_smem_detach(rt_smem_t m);
 void *rt_smem_alloc(rt_smem_t m, rt_size_t size);
 void *rt_smem_realloc(rt_smem_t m, void *rmem, rt_size_t newsize);
 void rt_smem_free(void *rmem);
+
+/* Best fit memory allocation interface */
+void *rt_smem_best_fit_alloc(rt_smem_t m, rt_size_t size);
+rt_size_t rt_smem_get_free_size(rt_smem_t m);
+rt_size_t rt_smem_get_used_size(rt_smem_t m);
+rt_size_t rt_smem_get_max_free_block(rt_smem_t m);
+int best_memtrace(int argc, char **argv);
 #endif
 
 #ifdef RT_USING_MEMHEAP

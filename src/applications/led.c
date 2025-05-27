@@ -38,7 +38,7 @@ void terminate_led(void){
 void led_sample()
 {
     WRITE_GPIO(SegEn_ADDR, 0x80);
-    WRITE_GPIO(SegDig_ADDR, 0x02111315);
+    WRITE_GPIO(SegDig_ADDR, 0x00111084);
     WRITE_GPIO(GPIO_LEDs,0x20207717);
     uid_t count = 0;
     while (1)

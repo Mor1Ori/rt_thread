@@ -50,6 +50,9 @@
 #include <rthw.h>
 #include <rtthread.h>
 
+/* 定义RT_UINT_MAX */
+#define RT_UINT_MAX ((rt_size_t)-1)
+
 #if defined (RT_USING_SMALL_MEM)
  /**
   * memory item on the small mem
@@ -555,6 +558,192 @@ void rt_smem_free(void *rmem)
     plug_holes(small_mem, mem);
 }
 RTM_EXPORT(rt_smem_free);
+
+/**
+ * @brief This function will allocate a memory block using best fit algorithm.
+ *
+ * @param m the small memory management object.
+ * @param size is the size of the memory.
+ *
+ * @return Return a pointer to the allocated memory block.
+ */
+void *rt_smem_best_fit_alloc(rt_smem_t m, rt_size_t size)
+{
+    struct rt_small_mem_item *mem, *best_mem = RT_NULL;
+    struct rt_small_mem *small_mem;
+    rt_size_t best_size = RT_UINT_MAX;
+    rt_size_t ptr;
+
+    /* alignment size */
+    size = RT_ALIGN(size, RT_ALIGN_SIZE);
+    if (size > RT_UINT_MAX - SIZEOF_STRUCT_MEM)
+        return RT_NULL;
+
+    size += SIZEOF_STRUCT_MEM;
+
+    small_mem = (struct rt_small_mem *)m;
+    if (size > small_mem->mem_size_aligned)
+        return RT_NULL;
+
+    /* find the best fit memory block */
+    for (ptr = (rt_size_t)small_mem->heap_ptr - (rt_size_t)small_mem->heap_ptr;
+         ptr < small_mem->mem_size_aligned;
+         ptr = ((struct rt_small_mem_item *)&small_mem->heap_ptr[ptr])->next)
+    {
+        mem = (struct rt_small_mem_item *)&small_mem->heap_ptr[ptr];
+        if (!MEM_ISUSED(mem))
+        {
+            rt_size_t mem_size = MEM_SIZE(small_mem, mem);
+            if (mem_size >= size && mem_size < best_size)
+            {
+                best_mem = mem;
+                best_size = mem_size;
+            }
+        }
+    }
+
+    if (best_mem != RT_NULL)
+    {
+        /* split memory block if needed */
+        if (best_size > size + MIN_SIZE_ALIGNED)
+        {
+            struct rt_small_mem_item *new_mem;
+            new_mem = (struct rt_small_mem_item *)&small_mem->heap_ptr[((rt_uint8_t *)best_mem - small_mem->heap_ptr) + size];
+            new_mem->pool_ptr = MEM_FREED();
+            new_mem->next = best_mem->next;
+            new_mem->prev = (rt_uint8_t *)best_mem - small_mem->heap_ptr;
+            best_mem->next = (rt_uint8_t *)new_mem - small_mem->heap_ptr;
+            ((struct rt_small_mem_item *)&small_mem->heap_ptr[new_mem->next])->prev = (rt_uint8_t *)new_mem - small_mem->heap_ptr;
+        }
+
+        best_mem->pool_ptr = MEM_USED();
+        if (small_mem->lfree == best_mem)
+        {
+            /* update lfree pointer */
+            while (small_mem->lfree != small_mem->heap_end && MEM_ISUSED(small_mem->lfree))
+            {
+                small_mem->lfree = (struct rt_small_mem_item *)&small_mem->heap_ptr[small_mem->lfree->next];
+            }
+        }
+
+        return (rt_uint8_t *)best_mem + SIZEOF_STRUCT_MEM;
+    }
+
+    return RT_NULL;
+}
+
+/**
+ * @brief This function will get the total free memory size.
+ *
+ * @param m the small memory management object.
+ *
+ * @return Return the total free memory size.
+ */
+rt_size_t rt_smem_get_free_size(rt_smem_t m)
+{
+    struct rt_small_mem_item *mem;
+    struct rt_small_mem *small_mem;
+    rt_size_t free_size = 0;
+
+    small_mem = (struct rt_small_mem *)m;
+    for (mem = (struct rt_small_mem_item *)small_mem->heap_ptr;
+         mem != small_mem->heap_end;
+         mem = (struct rt_small_mem_item *)&small_mem->heap_ptr[mem->next])
+    {
+        if (!MEM_ISUSED(mem))
+        {
+            free_size += MEM_SIZE(small_mem, mem);
+        }
+    }
+
+    return free_size;
+}
+
+/**
+ * @brief This function will get the total used memory size.
+ *
+ * @param m the small memory management object.
+ *
+ * @return Return the total used memory size.
+ */
+rt_size_t rt_smem_get_used_size(rt_smem_t m)
+{
+    struct rt_small_mem *small_mem;
+    small_mem = (struct rt_small_mem *)m;
+    return small_mem->mem_size_aligned - rt_smem_get_free_size(m);
+}
+
+/**
+ * @brief This function will get the maximum free block size.
+ *
+ * @param m the small memory management object.
+ *
+ * @return Return the maximum free block size.
+ */
+rt_size_t rt_smem_get_max_free_block(rt_smem_t m)
+{
+    struct rt_small_mem_item *mem;
+    struct rt_small_mem *small_mem;
+    rt_size_t max_size = 0;
+
+    small_mem = (struct rt_small_mem *)m;
+    for (mem = (struct rt_small_mem_item *)small_mem->heap_ptr;
+         mem != small_mem->heap_end;
+         mem = (struct rt_small_mem_item *)&small_mem->heap_ptr[mem->next])
+    {
+        if (!MEM_ISUSED(mem))
+        {
+            rt_size_t mem_size = MEM_SIZE(small_mem, mem);
+            if (mem_size > max_size)
+            {
+                max_size = mem_size;
+            }
+        }
+    }
+
+    return max_size;
+}
+
+/**
+ * @brief This function will print the memory used information.
+ *
+ * @param m the small memory management object.
+ */
+int best_memtrace(int argc, char **argv)
+{
+    struct rt_small_mem_item *mem;
+    struct rt_small_mem *m;
+    struct rt_object_information *information;
+    struct rt_list_node *node;
+    struct rt_object *object;
+    char *name;
+
+    name = argc > 1 ? argv[1] : RT_NULL;
+    /* get mem object */
+    information = rt_object_get_information(RT_Object_Class_Memory);
+    for (node = information->object_list.next;
+         node != &(information->object_list);
+         node  = node->next)
+    {
+        object = rt_list_entry(node, struct rt_object, list);
+        /* find the specified object */
+        if (name != RT_NULL && rt_strncmp(name, object->name, RT_NAME_MAX) != 0)
+            continue;
+        /* mem object */
+        m = (struct rt_small_mem *)object;
+        /* show memory information */
+        for (mem = (struct rt_small_mem_item *)m->heap_ptr; mem != m->heap_end; mem = (struct rt_small_mem_item *)&m->heap_ptr[mem->next])
+        {
+            int i = 1;
+            if (m->parent.used > 0 && mem->pool_ptr != RT_NULL)
+            {
+                rt_kprintf("%d size: %d free: 0\n", i, mem->next - mem->prev - SIZEOF_STRUCT_MEM);
+                i++;
+            }
+        }
+    }
+    return 0;
+}
 
 #ifdef RT_USING_FINSH
 #include <finsh.h>

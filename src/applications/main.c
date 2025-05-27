@@ -64,6 +64,7 @@ void interrupt_sample(void);
 void mempool_sample(void);
 void mutex_sample(void);
 void led_sample(void);
+void memtest_sample(void);
 
 void printInfo(){
     rt_kprintf("=========================================================\n");
@@ -81,6 +82,7 @@ void printInfo(){
     rt_kprintf("| 0101: interrupt_sample()                               |\n");
     rt_kprintf("| 0110: mutex_sample()                                   |\n");
     rt_kprintf("| 0111: led_sample()                                     |\n");
+    rt_kprintf("| 1000: memtest_sample()                                 |\n");
     rt_kprintf("=========================================================\n");
 }
 
@@ -95,6 +97,7 @@ typedef enum {
     MEM_SAMPLE,
     MUTEX_SAMPLE,
     LED_SAMPLE,
+    MEMTEST_SAMPLE,
     NO_SAMPLE
 } SampleType;
 
@@ -133,6 +136,9 @@ void monitor_thread_entry(void* parameter) {
                         break;
                     case LED_SAMPLE:
                         terminate_led();
+                        break;
+                    case MEMTEST_SAMPLE:
+                        terminate_memtest();
                         break;
                     default:
                         break;
@@ -192,6 +198,10 @@ void startApp(){
                     example_thread = rt_thread_create("led_sample", (void (*)(void*))led_sample, RT_NULL, THREAD_STACK_SIZE, THREAD_PRIORITY, THREAD_TIMESLICE);
                     current_sample = LED_SAMPLE;
                     break;
+                case 0x8008:
+                    example_thread = rt_thread_create("memtest_sample", (void (*)(void*))memtest_sample, RT_NULL, THREAD_STACK_SIZE, THREAD_PRIORITY, THREAD_TIMESLICE);
+                    current_sample = MEMTEST_SAMPLE;
+                    break;
                 default:
                     break;
             }
@@ -221,9 +231,9 @@ int main(void)
 {	
   WRITE_GPIO(GPIO_LEDs,0x11110001);
   WRITE_GPIO(SegEn_ADDR, 0x10);
-  WRITE_GPIO(SegDig_ADDR, 0x02111314);
+  WRITE_GPIO(SegDig_ADDR, 0x00111084);
   M_PSP_WRITE_REGISTER_32(SegEn_ADDR, 0x00110000);
-  M_PSP_WRITE_REGISTER_32(SegDig_ADDR, 0x02111314);
+  M_PSP_WRITE_REGISTER_32(SegDig_ADDR, 0x00111084);
 
   /*创建线程示例*/
   Start = rt_thread_create("start",
